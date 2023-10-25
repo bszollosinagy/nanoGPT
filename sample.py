@@ -7,7 +7,7 @@ from contextlib import nullcontext
 import torch
 import tiktoken
 from model import GPTConfig, GPT
-from plotstuff import plot_pmf
+from plotstuff import plot_pmf, plot_obviousness
 
 # -----------------------------------------------------------------------------
 init_from = 'resume' # either 'resume' (from an out_dir) or a gpt2 variant (e.g. 'gpt2-xl')
@@ -90,3 +90,4 @@ with torch.no_grad():
             print('---------------')
 
             plot_pmf(decode, pmf_at_each_step, gen_seq=y, probability_amplification_factor=4)
+            plot_obviousness(decode, pmf_at_each_step, gen_seq=y)
