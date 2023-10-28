@@ -21,6 +21,7 @@ import shutil
 import time
 import math
 import pickle
+import uuid
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -85,6 +86,15 @@ compile = True # use PyTorch 2.0 to compile the model to be faster
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
+if wandb_log:
+    import wandb
+    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
+
+    # If param sweep is enabled, then ask W&B which config this instance should run
+    config_wandb = wandb.config.as_dict()
+    for conf_key, conf_value in config_wandb.items():
+        globals()[conf_key] = conf_value
+
 # -----------------------------------------------------------------------------
 
 # various inits, derived attributes, I/O setup
@@ -248,9 +258,8 @@ def get_lr(it):
     return min_lr + coeff * (learning_rate - min_lr)
 
 # logging
-if wandb_log and master_process:
-    import wandb
-    wandb.init(project=wandb_project, name=wandb_run_name, config=config)
+if wandb_log and ddp:
+    raise NotImplementedError('DDP and WAND combo not implemented anymore.... because of changes needed for the parameter sweeper')
 
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
@@ -258,6 +267,7 @@ t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
+checkpoint_fname = None
 while True:
 
     # determine and set the learning rate for this iteration
@@ -289,7 +299,11 @@ while True:
                     'config': config,
                 }
                 print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                checkpoint_uuid_raw = uuid.uuid1()
+                assert checkpoint_uuid_raw.is_safe, 'UUID not multiprocessing safe'
+                checkpoint_uuid = checkpoint_uuid_raw.hex
+                checkpoint_fname = os.path.join(out_dir, f'ckpt_{checkpoint_uuid}.pt')
+                torch.save(checkpoint, checkpoint_fname)
     if iter_num == 0 and eval_only:
         break
 
@@ -340,7 +354,9 @@ while True:
 if wandb_log:
     if Path(os.path.join(out_dir, 'ckpt.pt')).exists():
         print('Uploading Learned model to Weights and Biases')
-        shutil.copy(os.path.join(out_dir, 'ckpt.pt'), os.path.join(wandb.run.dir, 'ckpt.pt'))
+        artifact = wandb.Artifact('model', type='model')
+        artifact.add_file(checkpoint_fname)
+        wandb.log_artifact(artifact)
 
 if ddp:
     destroy_process_group()

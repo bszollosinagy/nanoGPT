@@ -1,0 +1,14 @@
+program: train.py
+method: grid
+metric:
+  name: val/loss
+  goal: minimize
+parameters:
+  config_file_name:
+    value: "config/train_names_char.py"
+  n_embd:
+    values: [6,7,8,9,10,11]
+  block_size:
+    values: [7,8,9,10]
+  n_hidden:
+    values: [50, 100, 200, 300]

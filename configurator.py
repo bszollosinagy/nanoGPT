@@ -17,7 +17,10 @@ comes up with a better simple Python solution I am all ears.
 import sys
 from ast import literal_eval
 
-for arg in sys.argv[1:]:
+# Load and use the configuration file first... and only use the other overrides after this is done
+argument_list = sys.argv[1:]
+idx_to_remove = None
+for argi, arg in enumerate(argument_list):
     if '=' not in arg:
         # assume it's the name of a config file
         assert not arg.startswith('--')
@@ -26,6 +29,31 @@ for arg in sys.argv[1:]:
         with open(config_file) as f:
             print(f.read())
         exec(open(config_file).read())
+        # Mark this argument to be removed from list, because it is already handled
+        idx_to_remove = argi
+        break
+    else:
+        # assume it's a --key=value argument
+        assert arg.startswith('--')
+        key, val = arg.split('=')
+        key = key[2:]
+
+        # Special argument to allow choosing a config file via the Param Sweep Controller of Weights and Biases
+        if key == "config_file_name":
+            config_file = val
+            print(f"Overriding config with {config_file}:")
+            with open(config_file) as f:
+                print(f.read())
+            exec(open(config_file).read())
+            # Mark this argument to be removed from list, because it is already handled
+            idx_to_remove = argi
+
+if idx_to_remove is not None:
+    argument_list = [arg for argi, arg in enumerate(argument_list) if argi != idx_to_remove]
+
+for arg in argument_list:
+    if '=' not in arg:
+        raise NotImplementedError('This should have been handled earlier')
     else:
         # assume it's a --key=value argument
         assert arg.startswith('--')
